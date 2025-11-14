@@ -1,6 +1,10 @@
 {
 	"pack": {
-		"pack_format": 48,
-		"description": "I_DO_THIS. Created by YOUR_NAME_HERE."
+		"description": "... Created by RandomGgames.",
+		"pack_format": 88,
+		"supported_formats": [
+			48,
+			88
+		]
 	}
 }
