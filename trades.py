@@ -1,0 +1,74 @@
+from typing import NamedTuple
+
+
+class Trade(NamedTuple):
+    buy_item: str
+    buy_quantity: int
+    sell_item: str
+    sell_quantity: int
+    price_multiplier: float
+    max_uses: int
+
+
+trades = {
+    "Section 1": {
+        "minimum_quantity": 2,
+        "maximum_quantity": 3,
+        "trades": [
+            Trade(buy_item="minecraft:baked_potato", buy_quantity=4, sell_item="minecraft:emerald", sell_quantity=1, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:hay_block", buy_quantity=1, sell_item="minecraft:emerald", sell_quantity=1, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:pumpkin", buy_quantity=4, sell_item="minecraft:emerald", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+        ]
+    },
+    "Section 2": {
+        "minimum_quantity": 1,
+        "maximum_quantity": 3,
+        "trades": [
+            Trade(buy_item="minecraft:gravel", buy_quantity=2, sell_item="minecraft:flint", sell_quantity=1, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:cobblestone", buy_quantity=5, sell_item="minecraft:stone", sell_quantity=4, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:coal", buy_quantity=1, sell_item="minecraft:torch", sell_quantity=8, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:acacia_planks", buy_quantity=4, sell_item="minecraft:acacia_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:birch_planks", buy_quantity=4, sell_item="minecraft:birch_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:cherry_planks", buy_quantity=4, sell_item="minecraft:cherry_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:dark_oak_planks", buy_quantity=4, sell_item="minecraft:dark_oak_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:jungle_planks", buy_quantity=4, sell_item="minecraft:jungle_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:mangrove_planks", buy_quantity=4, sell_item="minecraft:mangrove_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:oak_planks", buy_quantity=4, sell_item="minecraft:oak_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:pale_oak_planks", buy_quantity=4, sell_item="minecraft:pale_oak_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:spruce_planks", buy_quantity=4, sell_item="minecraft:spruce_log", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:wheat_seeds", buy_quantity=8, sell_item="minecraft:wheat", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:pumpkin", buy_quantity=2, sell_item="minecraft:pumpkin_pie", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:wheat", buy_quantity=2, sell_item="minecraft:bread", sell_quantity=1, price_multiplier=0.05, max_uses=16),
+            Trade(buy_item="minecraft:rotten_flesh", buy_quantity=4, sell_item="minecraft:leather", sell_quantity=1, price_multiplier=0.05, max_uses=16),
+            Trade(buy_item="minecraft:clay_ball", buy_quantity=1, sell_item="minecraft:brick", sell_quantity=1, price_multiplier=0.05, max_uses=16),
+            Trade(buy_item="minecraft:gravel", buy_quantity=2, sell_item="minecraft:dirt", sell_quantity=1, price_multiplier=0.05, max_uses=64),
+        ]
+    },
+    "Logs": {
+        "minimum_quantity": 1,
+        "maximum_quantity": 2,
+        "trades": [
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:mycelium", sell_quantity=1, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:dirt", sell_quantity=8, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:blue_ice", sell_quantity=1, price_multiplier=0.05, max_uses=16),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:podzol", sell_quantity=2, price_multiplier=0.05, max_uses=8),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:oak_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:spruce_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:birch_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:jungle_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:dark_oak_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:acacia_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:cherry_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:mangrove_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:pale_oak_log", sell_quantity=16, price_multiplier=0.05, max_uses=2),
+        ]
+    },
+    "Blocks": {
+        "minimum_quantity": 1,
+        "maximum_quantity": 3,
+        "trades": [
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:mycelium", sell_quantity=1, price_multiplier=0.05, max_uses=4),
+            Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:gunpowder", sell_quantity=8, price_multiplier=0.05, max_uses=2),
+        ]
+    },
+}
