@@ -46,7 +46,6 @@ class Trade(NamedTuple):
 
 trades = {
     "Buys": {
-        "minimum_quantity": 1,
         "maximum_quantity": 1,
         "trades": [
             Trade(buy_item="minecraft:baked_potato", buy_quantity=4, sell_item="minecraft:emerald", sell_quantity=1, price_multiplier=0.05, max_uses=4, weight=1),
@@ -61,7 +60,6 @@ trades = {
         ]
     },
     "Trades": {
-        "minimum_quantity": 1,
         "maximum_quantity": 2,
         "trades": [
             Trade(buy_item="minecraft:acacia_planks", buy_quantity=4, sell_item="minecraft:acacia_log", sell_quantity=1, price_multiplier=0.05, max_uses=8, weight=1),
@@ -85,7 +83,6 @@ trades = {
         ]
     },
     "Dyes": {
-        "minimum_quantity": 1,
         "maximum_quantity": 2,
         "trades": [
             Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:black_dye", sell_quantity=8, price_multiplier=0.05, max_uses=2, weight=1),
@@ -107,7 +104,6 @@ trades = {
         ]
     },
     "Saplings": {
-        "minimum_quantity": 1,
         "maximum_quantity": 1,
         "trades": [
             Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:acacia_sapling", sell_quantity=8, price_multiplier=0.05, max_uses=4, weight=1),
@@ -122,7 +118,6 @@ trades = {
         ]
     },
     "Plants": {
-        "minimum_quantity": 1,
         "maximum_quantity": 3,
         "trades": [
             Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:beetroot_seeds", sell_quantity=16, price_multiplier=0.05, max_uses=4, weight=1),
@@ -148,7 +143,6 @@ trades = {
         ]
     },
     "Generic": {
-        "minimum_quantity": 1,
         "maximum_quantity": 2,
         "trades": [
             Trade(buy_item="minecraft:emerald", buy_quantity=1, sell_item="minecraft:acacia_log", sell_quantity=16, price_multiplier=0.05, max_uses=2, weight=1),
