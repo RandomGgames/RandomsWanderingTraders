@@ -1,3 +1,4 @@
+import json
 import logging
 import pathlib
 import socket
@@ -33,13 +34,106 @@ def read_toml(file_path: typing.Union[str, pathlib.Path]) -> dict:
     return config
 
 
-def load_inspection_regions(module_name: str = "trades"):
-    return __import__(module_name).trades
+def load_module(module_name: str):
+    return __import__(module_name)
 
 
-def main() -> None:
-    trade_data = load_inspection_regions()
-    logger.debug(f'{trade_data=}')
+def write_text_file_lines(file_path: typing.Union[str, pathlib.Path], lines: typing.List[str]) -> None:
+    """
+    Writes a list of strings to a text file, with each string on a new line.
+    Includes error checking and logging.
+
+    Args:
+    file_path (typing.Union[str, pathlib.Path]): The file path of the text file to write.
+    lines (typing.List[str]): A list of strings to write to the text file.
+
+    Returns:
+    None
+    """
+    try:
+        with open(file_path, 'w') as f:
+            for line in lines:
+                f.write(line + '\n')
+        logger.info(f"Successfully wrote {file_path}")
+    except Exception as e:
+        logger.error(f"Error writing {file_path}: {e}")
+
+
+def generate_scoreboard_commands(trade_sections: dict) -> list[str]:
+    commands = []
+    index = 1
+
+    for section in trade_sections.values():
+        trades = section["trades"]
+        max_qty = section["maximum_quantity"]
+
+        count = len(trades)
+        start = index
+        end = index + count - 1
+
+        for _ in range(max_qty):
+            commands.append(
+                f"execute store result score @s RandomsWanderingTraders run random value {start}..{end}"
+            )
+            commands.append(
+                "execute as @s run function randoms_wandering_traders:add_scoreboard_based_trade"
+            )
+
+        index = end + 1
+
+    return commands
+
+
+def generate_trade_commands(trade_sections: dict) -> list[str]:
+    commands = []
+    index = 1
+
+    for section in trade_sections.values():
+        for trade in section["trades"]:
+            commands.append(
+                f"execute if score @s RandomsWanderingTraders matches {index} "
+                f"unless data entity @s Offers.Recipes.[{trade.unless_nbt()}] "
+                f"run data modify entity @s Offers.Recipes insert -1 value {trade.add_nbt()}"
+            )
+            index += 1
+
+    return commands
+
+
+def export_scoreboard_commands(trade_sections: dict, output_path: typing.Union[str, pathlib.Path]):
+    lines = generate_scoreboard_commands(trade_sections)
+    write_text_file_lines(output_path, lines)
+
+
+def export_trade_commands(trade_sections: dict, output_path: typing.Union[str, pathlib.Path]):
+    lines = generate_trade_commands(trade_sections)
+    write_text_file_lines(output_path, lines)
+
+
+def export_all(trade_sections, scoreboard_path, trades_path):
+    export_scoreboard_commands(trade_sections, scoreboard_path)
+    export_trade_commands(trade_sections, trades_path)
+
+
+def main():
+    trade_sections = load_module("trades").trades
+
+    scoreboard_cmds = generate_scoreboard_commands(trade_sections)
+    trade_cmds = generate_trade_commands(trade_sections)
+
+    logger.info("SCOREBOARD COMMANDS:")
+    for c in scoreboard_cmds:
+        logger.info(c)
+
+    logger.info("\nTRADE COMMANDS:")
+    for c in trade_cmds:
+        logger.info(c)
+
+    export_all(
+        trade_sections,
+        config.get("output", {}).get("scoreboard_commands_path", "scoreboard_commands.txt"),
+        config.get("output", {}).get("trade_commands_path", "trade_commands.txt")
+    )
 
 
 def format_duration_long(duration_seconds: float) -> str:
