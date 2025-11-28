@@ -1,3 +1,4 @@
+import json
 from typing import NamedTuple
 
 
@@ -9,6 +10,38 @@ class Trade(NamedTuple):
     price_multiplier: float
     max_uses: int
     weight: int
+
+    def add_nbt(self) -> str:
+        return json.dumps(
+            {
+                "buy": {
+                    "id": self.buy_item,
+                    "count": self.buy_quantity
+                },
+                "sell": {
+                    "id": self.sell_item,
+                    "count": self.sell_quantity
+                },
+                "priceMultiplier": self.price_multiplier,
+                "maxUses": self.max_uses
+            },
+            separators=(',', ':')
+        )
+
+    def unless_nbt(self) -> str:
+        return json.dumps(
+            {
+                "buy": {
+                    "id": self.buy_item,
+                    "count": self.buy_quantity
+                },
+                "sell": {
+                    "id": self.sell_item,
+                    "count": self.sell_quantity
+                }
+            },
+            separators=(',', ':')
+        )
 
 
 trades = {
