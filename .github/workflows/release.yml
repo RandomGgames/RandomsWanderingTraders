@@ -35,6 +35,31 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+      - name: Parse and expand versions
+        id: versions
+        run: |
+          input="${{ github.event.inputs.versions }}"
+          result=""
+          OLDIFS=$IFS
+          IFS=','
+          for val in $input; do
+            val=$(echo "$val" | xargs) # trim spaces
+            if [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-\1\.([0-9]+)$ ]]; then
+              prefix="${BASH_REMATCH[1]}"
+              start="${BASH_REMATCH[2]}"
+              end="${BASH_REMATCH[3]}"
+              for ((i=start; i<=end; ++i)); do
+                result+="${prefix}.${i},"
+              done
+            else
+              result+="$val,"
+            fi
+          done
+          IFS=$OLDIFS
+          # Remove trailing comma
+          result="${result%,}"
+          echo "expanded_versions=$result" >> $GITHUB_OUTPUT
+
       - name: Zip files for release
         id: zip
         run: |
@@ -59,5 +84,5 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          modrinth-game-versions: ${{ github.event.inputs.versions }}
+          modrinth-game-versions: ${{ steps.versions.outputs.expanded_versions }}
           modrinth-loaders: datapack
