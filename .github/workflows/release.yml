@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       versions:
-        description: "Game versions (e.g., 1.21.5 or 1.21-1.21.10)"
+        description: "Game versions (e.g., 1.21.9-1.21.11 or 1.21.9,1.21.13)"
         required: true
         type: string
       changelog:
@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+
 jobs:
   release:
     runs-on: ubuntu-22.04
@@ -25,6 +26,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Normalize tag to start with v
       - name: Normalize tag
         id: norm_tag
         run: |
@@ -34,6 +36,7 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+      # Expand single versions and ranges into a newline-separated string
       - name: Parse and expand versions
         id: versions
         shell: bash
@@ -45,35 +48,36 @@ jobs:
 
           for val in $input; do
             val="$(echo "$val" | xargs)" # trim whitespace
-            if [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-([0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
-              start_prefix="${BASH_REMATCH[1]}"
-              start_num="${BASH_REMATCH[2]}"
-              end_prefix="${BASH_REMATCH[3]}"
-              end_num="${BASH_REMATCH[4]}"
-              if [[ "$start_prefix" == "$end_prefix" ]]; then
-                for ((i=start_num; i<=end_num; ++i)); do
-                  result+="${start_prefix}.${i},"
-                done
-              else
-                # Different prefixes, not a true range
-                result+="$val,"
-              fi
-            elif [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-([0-9]+)$ ]]; then
+            if [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-\1\.([0-9]+)$ ]]; then
+              # Format: 1.21.9-1.21.11
               prefix="${BASH_REMATCH[1]}"
-              start_num="${BASH_REMATCH[2]}"
-              end_num="${BASH_REMATCH[3]}"
-              for ((i=start_num; i<=end_num; ++i)); do
-                result+="${prefix}.${i},"
+              start="${BASH_REMATCH[2]}"
+              end="${BASH_REMATCH[3]}"
+              for ((i=start; i<=end; ++i)); do
+                result+="${prefix}.${i}\n"
               done
-            else
-              result+="$val,"
+            elif [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-([0-9]+)$ ]]; then
+              # Format: 1.21.9-11
+              prefix="${BASH_REMATCH[1]}"
+              start="${BASH_REMATCH[2]}"
+              end="${BASH_REMATCH[3]}"
+              for ((i=start; i<=end; ++i)); do
+                result+="${prefix}.${i}\n"
+              done
+            elif [[ -n "$val" ]]; then
+              # Single version
+              result+="$val\n"
             fi
           done
 
           IFS="$OLDIFS"
-          result="${result%,}"
-          echo "expanded_versions=$result" >> "$GITHUB_OUTPUT"
+          # Remove trailing newline
+          result=$(echo -e "$result" | sed '/^[[:space:]]*$/d')
+          echo "expanded_versions<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$result" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
+      # Zip your datapack files (build standard filename)
       - name: Zip files for release
         id: zip
         run: |
@@ -88,15 +92,16 @@ jobs:
           [ -f pack.png ] && zip -u "$zip_name" pack.png || true
           echo "zip_name=$zip_name" >> $GITHUB_OUTPUT
 
+      # Publish to GitHub Release and Modrinth using the action
       - name: Publish to GitHub Release and Modrinth
-        uses: Kira-NT/mc-publish@v3.2.0
+        uses: Kir-Antipov/mc-publish@v3.3
         with:
-          name: ${{ github.event.repository.name }}
-          version: ${{ steps.norm_tag.outputs.tag }}
-          changelog: ${{ github.event.inputs.changelog }}
-          files: ${{ steps.zip.outputs.zip_name }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          modrinth-game-versions: ${{ steps.versions.outputs.expanded_versions }}
-          modrinth-loaders: datapack
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          loaders: datapack
+          game-versions: ${{ steps.versions.outputs.expanded_versions }}
+          files: ${{ steps.zip.outputs.zip_name }}
+          name: ${{ github.event.repository.name }} ${{ steps.norm_tag.outputs.tag }}
+          version: ${{ steps.norm_tag.outputs.tag }}
+          changelog: ${{ github.event.inputs.changelog }}
