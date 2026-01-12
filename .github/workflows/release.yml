@@ -134,7 +134,11 @@ jobs:
 
           # Capture the generated changelog
           CHANGELOG=$(gh release view "$TAG" --repo="$GITHUB_REPOSITORY" --json body -q '.body')
-          echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
+
+          # Write safely to GitHub Actions output
+          echo "CHANGELOG<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - uses: Kira-NT/mc-publish@v3
         with:
