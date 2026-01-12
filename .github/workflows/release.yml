@@ -8,7 +8,9 @@ on:
         required: true
         type: string
       versions:
-        description: "Minecraft game versions (e.g., 1.21, 1.21-1.22, 1.21,1.22)"
+        description: |
+          Minecraft game versions (e.g., 1.21, 1.21-1.22, 1.21,1.22)
+          (separate with commas, dashes for ranges are supported)
         required: true
         type: string
 
@@ -28,7 +30,7 @@ jobs:
     steps:
       - id: out
         run: |
-          # Normalize tag for consistent naming (ensure starts with v)
+          # Normalize tag to always start with v
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] && tag="$inp" || tag="v$inp"
           base_version="${tag#v}"
@@ -52,9 +54,9 @@ jobs:
           repo_name="${GITHUB_REPOSITORY#*/}"
           archive_name="${repo_name}-${base_version}.zip"
 
-          # Safety check
+          # Check for required datapack manifest
           [ -f pack.mcmeta ] || { echo "::error::pack.mcmeta is missing"; exit 1; }
-          # Start with pack.mcmeta, safely add optional files
+          # Start archive with manifest, safely add content folders
           zip -r "$archive_name" pack.mcmeta
           [ -d data ] && zip -r "$archive_name" data || true
           [ -d assets ] && zip -r "$archive_name" assets || true
@@ -93,13 +95,10 @@ jobs:
           changelog: auto
           game-versions: ${{ github.event.inputs.versions }}
           files: ${{ needs.build-zip.outputs.zip_name }}
+          loaders: vanilla # ← REQUIRED: needed for data packs!
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ env.MODRINTH_TOKEN }}
           modrinth-id: ${{ env.MODRINTH_ID }}
-
-          # Optionally: Disable publishing somewhere if needed
-          # modrinth: true
-          # github: true
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
