@@ -8,7 +8,12 @@ on:
         required: true
         type: string
       versions:
-        description: "Minecraft versions (e.g. 1.21.9 or 1.21.9-1.21.11)"
+        description: |
+          Minecraft versions.
+          Examples:
+            1.21.9
+            1.21.9-1.21.11
+            1.21.7,1.21.9-1.21.11
         required: true
         type: string
 
@@ -16,46 +21,106 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  normalize-tag:
     runs-on: ubuntu-22.04
+    outputs:
+      base_version: ${{ steps.out.outputs.base_version }}
+    steps:
+      - id: out
+        run: |
+          inp="${{ github.event.inputs.tag }}"
+          [[ "$inp" =~ ^v ]] || inp="v$inp"
+          echo "base_version=${inp#v}" >> "$GITHUB_OUTPUT"
+
+  prepare-versions:
+    runs-on: ubuntu-22.04
+    outputs:
+      mc_versions: ${{ steps.out.outputs.mc_versions }}
+    steps:
+      - id: out
+        run: |
+          set -e
+          INPUT="$(echo "${{ github.event.inputs.versions }}" | tr -d ' ')"
+
+          expand() {
+            local a="$1" b="$2"
+            [[ "${a%.*}" == "${b%.*}" ]] || exit 1
+            for ((i=${a##*.}; i<=${b##*.}; i++)); do
+              echo "${a%.*}.$i"
+            done
+          }
+
+          OUT=()
+          IFS=',' read -ra PARTS <<< "$INPUT"
+          for p in "${PARTS[@]}"; do
+            if [[ "$p" == *-* ]]; then
+              while read -r v; do OUT+=("$v"); done < <(
+                expand "${p%%-*}" "${p##*-}"
+              )
+            else
+              OUT+=("$p")
+            fi
+          done
+
+          {
+            echo "mc_versions<<EOF"
+            for v in "${OUT[@]}"; do echo "$v"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  build-zip:
+    runs-on: ubuntu-22.04
+    needs: normalize-tag
+    outputs:
+      zip_name: ${{ steps.zip.outputs.archive_name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Normalize tag
-        id: tag
+      - id: zip
         run: |
-          TAG="${{ github.event.inputs.tag }}"
-          [[ "$TAG" == v* ]] || TAG="v$TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "base=${TAG#v}" >> "$GITHUB_OUTPUT"
+          set -e
 
-      - name: Zip datapack (known-good logic)
-        id: zip
-        run: |
-          repo_name="${GITHUB_REPOSITORY#*/}"
-          zip_name="${repo_name}-${{ steps.tag.outputs.base }}.zip"
+          ZIP="RandomsWanderingTraders-${{ needs.normalize-tag.outputs.base_version }}.zip"
 
-          [ -f pack.mcmeta ] || { echo "::error ::pack.mcmeta missing"; exit 1; }
+          # Required file
+          [ -f pack.mcmeta ] || { echo "::error ::pack.mcmeta not found"; exit 1; }
 
-          rm -f "$zip_name"
-          zip -r "$zip_name" pack.mcmeta
-          [ -d data ] && zip -r "$zip_name" data
-          [ -d assets ] && zip -r "$zip_name" assets
-          [ -f pack.png ] && zip -u "$zip_name" pack.png
+          rm -f "$ZIP"
 
-          unzip -l "$zip_name"
-          echo "zip=$zip_name" >> "$GITHUB_OUTPUT"
+          # Explicit datapack root contents only
+          zip -r "$ZIP" pack.mcmeta
+          [ -d data ] && zip -r "$ZIP" data
+          [ -d assets ] && zip -r "$ZIP" assets
+          [ -f pack.png ] && zip -u "$ZIP" pack.png
 
-      - name: Publish to GitHub & Modrinth
-        uses: Kira-NT/mc-publish@v3
+          echo "::group::ZIP CONTENTS"
+          unzip -l "$ZIP"
+          echo "::endgroup::"
+
+          echo "archive_name=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.tag.outputs.base }}
-          version: ${{ steps.tag.outputs.base }}
+          name: datapack
+          path: ${{ steps.zip.outputs.archive_name }}
+
+  release:
+    runs-on: ubuntu-22.04
+    needs: [normalize-tag, prepare-versions, build-zip]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: datapack
+
+      - uses: Kira-NT/mc-publish@v3
+        with:
+          name: ${{ needs.normalize-tag.outputs.base_version }}
+          version: ${{ needs.normalize-tag.outputs.base_version }}
           version-type: release
           changelog: auto
-          game-versions: ${{ github.event.inputs.versions }}
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
+          files: ${{ needs.build-zip.outputs.zip_name }}
           loaders: vanilla
-          files: ${{ steps.zip.outputs.zip }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
