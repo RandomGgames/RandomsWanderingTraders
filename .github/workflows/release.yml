@@ -128,6 +128,7 @@ jobs:
             --repo="$GITHUB_REPOSITORY" \
             --title="${REPO_NAME} ${TAG} for ${VERSIONS}" \
             --generate-notes \
+            --latest \
             "$ZIP_FILE"
 
           # Capture the generated changelog
