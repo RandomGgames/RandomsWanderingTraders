@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       versions:
-        description: "Game versions (e.g., 1.21.9-1.21.11 or 1.21.9,1.21.13)"
+        description: "Game versions (e.g., 1.21.9,1.21.11 or 1.21.9-1.21.11)"
         required: true
         type: string
       changelog:
@@ -23,7 +23,7 @@ jobs:
   release:
     runs-on: ubuntu-22.04
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Normalize tag
@@ -35,8 +35,8 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Expand Minecraft versions (single and ranges to multiline)
-        id: versions
+      - name: Parse and expand game versions (to newline, for mc-publish)
+        id: expanded_versions
         shell: bash
         run: |
           input="${{ github.event.inputs.versions }}"
@@ -47,6 +47,7 @@ jobs:
           for val in $input; do
             val="$(echo "$val" | xargs)"
             if [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-\1\.([0-9]+)$ ]]; then
+              # Example: 1.21.9-1.21.11
               prefix="${BASH_REMATCH[1]}"
               start="${BASH_REMATCH[2]}"
               end="${BASH_REMATCH[3]}"
@@ -54,6 +55,7 @@ jobs:
                 output+="${prefix}.${i}"$'\n'
               done
             elif [[ "$val" =~ ^([0-9]+\.[0-9]+)\.([0-9]+)-([0-9]+)$ ]]; then
+              # Example: 1.21.9-11 (shorthand)
               prefix="${BASH_REMATCH[1]}"
               start="${BASH_REMATCH[2]}"
               end="${BASH_REMATCH[3]}"
@@ -66,23 +68,19 @@ jobs:
           done
 
           IFS="$OLDIFS"
-          # Strip blank lines
-          output=$(echo "$output" | sed '/^[[:space:]]*$/d')
-          # Debug print so you see exactly what is being passed
-          echo "Expanded versions are:"
-          echo "$output"
-          # Set as output for GitHub Actions (special syntax for multiline)
+          # Remove trailing newlines and blank lines just in case
+          output="$(echo "$output" | sed '/^[[:space:]]*$/d')"
           echo "expanded_versions<<EOF" >> $GITHUB_OUTPUT
           echo "$output" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Show output for debugging
+      - name: Show built version list for debug
         run: |
-          echo "::notice:: Versions for Modrinth"
-          echo "${{ steps.versions.outputs.expanded_versions }}"
-          echo "--- END ---"
+          echo "Expanded versions:"
+          echo "${{ steps.expanded_versions.outputs.expanded_versions }}"
+          echo "--- END VERSIONS ---"
 
-      - name: Zip files for release
+      - name: Zip datapack files
         id: zip
         run: |
           tag="${{ steps.norm_tag.outputs.tag }}"
@@ -102,8 +100,9 @@ jobs:
           modrinth-id: ${{ vars.MODRINTH_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          loaders: datapack
-          game-versions: ${{ steps.versions.outputs.expanded_versions }}
+          loaders: |
+            datapack
+          game-versions: ${{ steps.expanded_versions.outputs.expanded_versions }}
           files: ${{ steps.zip.outputs.zip_name }}
           name: ${{ github.event.repository.name }} ${{ steps.norm_tag.outputs.tag }}
           version: ${{ steps.norm_tag.outputs.tag }}
