@@ -9,8 +9,9 @@ on:
         type: string
       versions:
         description: |
-          One or more compatible Minecraft versions, comma separated (e.g. 1.21.9,1.21.10).
-          Do NOT use dash-ranges, please specify all versions explicitly.
+          One or more compatible Minecraft versions.
+          Separate with commas for explicit versions (e.g. 1.21.9,1.21.10) or use a dash for ranges (e.g. 1.21.9-1.21.11).
+          Mixed forms are supported: e.g., 1.21.5,1.21.9-1.21.11,1.21.14
         required: true
         type: string
 
@@ -37,7 +38,7 @@ jobs:
           echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
-    name: Parse and Validate Minecraft Versions
+    name: Expand and Validate Minecraft Versions
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
@@ -45,21 +46,63 @@ jobs:
     steps:
       - id: versions
         run: |
+          set -e
           VERSIONS="${{ github.event.inputs.versions }}"
-          VERSIONS_STRIPPED="$(echo "$VERSIONS" | tr -d ' ' | tr -s ',')"
-          # Fail on dash, as ranges not supported
-          if [[ "$VERSIONS_STRIPPED" == *-* ]]; then
-            echo "::error ::Dash-ranges are not supported. Please enumerate all versions with commas (e.g. 1.21.9,1.21.10)."
+          VERSIONS_STRIPPED="$(echo "$VERSIONS" | tr -d ' ')"
+
+          # Function to expand simple patch version ranges only
+          expand_range() {
+            local start="$1"
+            local end="$2"
+            local prefix
+            local start_patch
+            local end_patch
+            prefix="${start%.*}."                # everything up to last dot + dot
+            start_patch="${start##*.}"
+            end_patch="${end##*.}"
+
+            if [[ "${start%.*}" != "${end%.*}" ]]; then
+              echo "::error ::Cannot expand range with different prefixes: $start-$end"
+              exit 1
+            fi
+            if ! [[ "$start_patch" =~ ^[0-9]+$ && "$end_patch" =~ ^[0-9]+$ ]]; then
+              echo "::error ::Invalid patch numbers in range: $start-$end"
+              exit 1
+            fi
+            if (( 10#$start_patch > 10#$end_patch )); then
+              echo "::error ::Range start must not be greater than end: $start-$end"
+              exit 1
+            fi
+
+            for ((p=10#$start_patch; p<=10#$end_patch; p++)); do
+              echo -n "${prefix}${p},"
+            done
+          }
+
+          FINAL_VERSIONS=""
+
+          IFS=',' read -ra PARTS <<< "$VERSIONS_STRIPPED"
+          for PART in "${PARTS[@]}"; do
+            if [[ -z "$PART" ]]; then continue; fi
+            if [[ "$PART" == *-* ]]; then
+              START="${PART%%-*}"
+              END="${PART##*-}"
+              RANGE_EXPANDED="$(expand_range "$START" "$END")"
+              FINAL_VERSIONS+="$RANGE_EXPANDED"
+            else
+              FINAL_VERSIONS+="$PART,"
+            fi
+          done
+
+          # Remove trailing comma
+          FINAL_VERSIONS="${FINAL_VERSIONS%,}"
+
+          if [[ -z "$FINAL_VERSIONS" ]]; then
+            echo "::error ::You must specify at least one valid Minecraft version."
             exit 1
           fi
-          # Remove leading/trailing commas & spaces, fail if blank
-          VERSION_LIST=$(echo "$VERSIONS_STRIPPED" | sed 's/^,*//; s/,*$//')
-          if [[ -z "$VERSION_LIST" ]]; then
-            echo "::error ::You must specify at least one Minecraft version."
-            exit 1
-          fi
-          # Output as comma-separated list
-          echo "mc_versions_list=$VERSION_LIST" >> $GITHUB_OUTPUT
+
+          echo "mc_versions_list=$FINAL_VERSIONS" >> $GITHUB_OUTPUT
 
   build-zip:
     name: Prepare Release Archive
