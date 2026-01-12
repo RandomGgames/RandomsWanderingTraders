@@ -9,8 +9,8 @@ on:
         type: string
       versions:
         description: |
-          One or more Minecraft versions, comma separated (e.g. 1.21.9,1.21.10 or 1.21.10)  
-          (Please do NOT use dash-ranges; input as explicit versions).
+          One or more compatible Minecraft versions, comma separated (e.g. 1.21.9,1.21.10).
+          Do NOT use dash-ranges, please specify all versions explicitly.
         required: true
         type: string
 
@@ -37,30 +37,29 @@ jobs:
           echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
-    name: Parse Minecraft Versions
+    name: Parse and Validate Minecraft Versions
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
-      mc_versions_json: ${{ steps.parse.outputs.mc_versions_json }}
-      mc_versions_yaml: ${{ steps.parse.outputs.mc_versions_yaml }}
+      mc_versions_list: ${{ steps.versions.outputs.mc_versions_list }}
     steps:
-      - id: parse
+      - id: versions
         run: |
           VERSIONS="${{ github.event.inputs.versions }}"
-          # Error if blank
-          if [[ -z "$VERSIONS" ]]; then
-            echo "::error::You must specify at least one Minecraft version"
+          VERSIONS_STRIPPED="$(echo "$VERSIONS" | tr -d ' ' | tr -s ',')"
+          # Fail on dash, as ranges not supported
+          if [[ "$VERSIONS_STRIPPED" == *-* ]]; then
+            echo "::error ::Dash-ranges are not supported. Please enumerate all versions with commas (e.g. 1.21.9,1.21.10)."
             exit 1
           fi
-          # Remove all spaces, split into lines
-          # Expand comma-separated (e.g., 1.21,1.22) into YAML
-          versions_yaml=$(echo "$VERSIONS" | tr -d ' ' | tr ',' '\n' | sed '/^$/d' | awk '{print "- "$0}')
-          versions_json=$(echo "$VERSIONS" | tr -d ' ' | tr ',' '\n' | sed '/^$/d' | jq -R . | jq -s .)
-          echo "$versions_yaml"
-          echo "mc_versions_yaml<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$versions_yaml" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-          echo "mc_versions_json=$versions_json" >> "$GITHUB_OUTPUT"
+          # Remove leading/trailing commas & spaces, fail if blank
+          VERSION_LIST=$(echo "$VERSIONS_STRIPPED" | sed 's/^,*//; s/,*$//')
+          if [[ -z "$VERSION_LIST" ]]; then
+            echo "::error ::You must specify at least one Minecraft version."
+            exit 1
+          fi
+          # Output as comma-separated list
+          echo "mc_versions_list=$VERSION_LIST" >> $GITHUB_OUTPUT
 
   build-zip:
     name: Prepare Release Archive
@@ -79,7 +78,6 @@ jobs:
           repo_name="${GITHUB_REPOSITORY#*/}"
           archive_name="${repo_name}-${base_version}.zip"
 
-          # Check for required manifest
           [ -f pack.mcmeta ] || { echo "::error::pack.mcmeta is missing"; exit 1; }
           zip -r "$archive_name" pack.mcmeta
           [ -d data ] && zip -r "$archive_name" data || true
@@ -88,7 +86,7 @@ jobs:
 
           echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
 
-      - name: Upload release artifact (for downstream jobs)
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: datapack-archive
@@ -117,7 +115,7 @@ jobs:
           version: "${{ needs.normalize-tag.outputs.base_version }}"
           version-type: "release"
           changelog: auto
-          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_yaml }}
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_list }}
           files: ${{ needs.build-zip.outputs.zip_name }}
           loaders: vanilla
           github-token: ${{ secrets.GITHUB_TOKEN }}
