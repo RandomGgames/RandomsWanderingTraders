@@ -120,7 +120,7 @@ jobs:
           changelog: auto
           game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
           files: ${{ needs.build-zip.outputs.zip_name }}
-          loaders: vanilla
+          loaders: datapack
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
