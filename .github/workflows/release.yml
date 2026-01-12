@@ -10,20 +10,18 @@ on:
       versions:
         description: |
           One or more compatible Minecraft versions.
-          Separate with commas for explicit versions (e.g. 1.21.9,1.21.10) or use a dash for ranges (e.g. 1.21.9-1.21.11).
-          Mixed forms supported: 1.21.7,1.21.9-1.21.11,1.22
+          Examples:
+            1.21.9
+            1.21.9-1.21.11
+            1.21.7,1.21.9-1.21.11,1.22
         required: true
         type: string
 
 permissions:
   contents: write
 
-env:
-  NORMALIZED_TAG: ${{ github.event.inputs.tag }}
-
 jobs:
   normalize-tag:
-    name: Normalize Release Tag
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.out.outputs.tag }}
@@ -33,137 +31,103 @@ jobs:
         run: |
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] && tag="$inp" || tag="v$inp"
-          base_version="${tag#v}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
+          echo "base_version=${tag#v}" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
-    name: Expand and Format Minecraft Versions (YAML)
     runs-on: ubuntu-22.04
-    needs: normalize-tag
     outputs:
-      mc_versions_yaml: ${{ steps.versions.outputs.mc_versions_yaml }}
+      mc_versions: ${{ steps.versions.outputs.mc_versions }}
     steps:
       - id: versions
         run: |
           set -e
-          VERSIONS="${{ github.event.inputs.versions }}"
-          VERSIONS_STRIPPED="$(echo "$VERSIONS" | tr -d ' ')"
+          INPUT="$(echo "${{ github.event.inputs.versions }}" | tr -d ' ')"
 
           expand_range() {
             local start="$1"
             local end="$2"
-            local prefix
-            local start_patch
-            local end_patch
-            prefix="${start%.*}."
-            start_patch="${start##*.}"
-            end_patch="${end##*.}"
 
-            if [[ "${start%.*}" != "${end%.*}" ]]; then
-              echo "::error ::Cannot expand range with different prefixes: $start-$end"
+            [[ "${start%.*}" == "${end%.*}" ]] || {
+              echo "::error ::Invalid range: $start-$end"
               exit 1
-            fi
-            if ! [[ "$start_patch" =~ ^[0-9]+$ && "$end_patch" =~ ^[0-9]+$ ]]; then
-              echo "::error ::Invalid patch numbers in range: $start-$end"
-              exit 1
-            fi
-            if (( 10#$start_patch > 10#$end_patch )); then
-              echo "::error ::Range start must not be greater than end: $start-$end"
-              exit 1
-            fi
+            }
 
-            for ((p=10#$start_patch; p<=10#$end_patch; p++)); do
-              echo "${prefix}${p}"
+            local base="${start%.*}."
+            local s="${start##*.}"
+            local e="${end##*.}"
+
+            for ((i=10#$s; i<=10#$e; i++)); do
+              echo "${base}${i}"
             done
           }
 
-          FINAL_LINES=()
-          IFS=',' read -ra PARTS <<< "$VERSIONS_STRIPPED"
-          for PART in "${PARTS[@]}"; do
-            if [[ -z "$PART" ]]; then continue; fi
-            if [[ "$PART" == *-* ]]; then
-              START="${PART%%-*}"
-              END="${PART##*-}"
-              while IFS= read -r expanded; do
-                FINAL_LINES+=("$expanded")
-              done < <(expand_range "$START" "$END")
+          OUT=()
+          IFS=',' read -ra PARTS <<< "$INPUT"
+
+          for p in "${PARTS[@]}"; do
+            if [[ "$p" == *-* ]]; then
+              while read -r v; do OUT+=("$v"); done < <(
+                expand_range "${p%%-*}" "${p##*-}"
+              )
             else
-              FINAL_LINES+=("$PART")
+              OUT+=("$p")
             fi
           done
 
-          if [[ ${#FINAL_LINES[@]} -eq 0 ]]; then
-            echo "::error ::You must specify at least one valid Minecraft version."
+          if [[ ${#OUT[@]} -eq 0 ]]; then
+            echo "::error ::No valid Minecraft versions provided"
             exit 1
           fi
 
-          # YAML multiline for GitHub Actions ($GITHUB_OUTPUT)
-          echo "mc_versions_yaml<<EOF" >> $GITHUB_OUTPUT
-          for v in "${FINAL_LINES[@]}"; do
-            echo "- $v" >> $GITHUB_OUTPUT
-          done
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "mc_versions<<EOF"
+            for v in "${OUT[@]}"; do echo "$v"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   build-zip:
-    name: Prepare Release Archive
     runs-on: ubuntu-22.04
-    needs: [normalize-tag]
+    needs: normalize-tag
     outputs:
       zip_name: ${{ steps.zip.outputs.archive_name }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Zip datapack
-        id: zip
+      - id: zip
         run: |
-          base_version="${{ needs.normalize-tag.outputs.base_version }}"
-          repo_name="${GITHUB_REPOSITORY#*/}"
-          archive_name="${repo_name}-${base_version}.zip"
+          name="${GITHUB_REPOSITORY#*/}-${{ needs.normalize-tag.outputs.base_version }}.zip"
+          [ -f pack.mcmeta ] || exit 1
+          zip -r "$name" pack.mcmeta
+          [ -d data ] && zip -r "$name" data
+          [ -d assets ] && zip -r "$name" assets
+          [ -f pack.png ] && zip -u "$name" pack.png
+          echo "archive_name=$name" >> "$GITHUB_OUTPUT"
 
-          [ -f pack.mcmeta ] || { echo "::error::pack.mcmeta is missing"; exit 1; }
-          zip -r "$archive_name" pack.mcmeta
-          [ -d data ] && zip -r "$archive_name" data || true
-          [ -d assets ] && zip -r "$archive_name" assets || true
-          [ -f pack.png ] && zip -u "$archive_name" pack.png || true
-
-          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
-
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: datapack-archive
           path: ${{ steps.zip.outputs.archive_name }}
 
   release:
-    name: Github & Modrinth Release
     runs-on: ubuntu-22.04
     needs: [normalize-tag, build-zip, prepare-versions]
-    env:
-      MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-      MODRINTH_ID: ${{ vars.MODRINTH_ID }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download built archive
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: datapack-archive
 
-      - name: Release to GitHub and Modrinth
-        uses: Kira-NT/mc-publish@v3
+      - uses: Kira-NT/mc-publish@v3
         with:
-          name: "${{ needs.normalize-tag.outputs.base_version }}"
-          version: "${{ needs.normalize-tag.outputs.base_version }}"
-          version-type: "release"
+          name: ${{ needs.normalize-tag.outputs.base_version }}
+          version: ${{ needs.normalize-tag.outputs.base_version }}
+          version-type: release
           changelog: auto
-          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_yaml }}
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
           files: ${{ needs.build-zip.outputs.zip_name }}
           loaders: vanilla
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          modrinth-token: ${{ env.MODRINTH_TOKEN }}
-          modrinth-id: ${{ env.MODRINTH_ID }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-id: ${{ vars.MODRINTH_ID }}
