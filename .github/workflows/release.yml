@@ -115,6 +115,7 @@ jobs:
           name: datapack
 
       - name: Create GitHub release with changelog
+        id: gh_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -146,7 +147,7 @@ jobs:
           files: ${{ needs.build-zip.outputs.zip_name }}
 
           # Use the same changelog text for Modrinth
-          modrinth-changelog: ${{ steps.release.outputs.CHANGELOG }}
+          modrinth-changelog: ${{ steps.gh_release.outputs.CHANGELOG }}
 
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
