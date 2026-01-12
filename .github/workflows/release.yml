@@ -8,11 +8,11 @@ on:
         required: true
         type: string
       versions:
-        description: 'Game versions (e.g., 1.21.5 or 1.21-1.21.10)'
+        description: "Game versions (e.g., 1.21.5 or 1.21-1.21.10)"
         required: true
         type: string
       changelog:
-        description: 'Changelog (optional)'
+        description: "Changelog (optional)"
         required: false
         type: string
 
@@ -26,7 +26,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Normalize tag to start with v
       - name: Normalize tag
         id: norm_tag
         run: |
@@ -36,7 +35,6 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      # Prepare the zip file with repo and version info
       - name: Zip files for release
         id: zip
         run: |
@@ -51,16 +49,15 @@ jobs:
           [ -f pack.png ] && zip -u "$zip_name" pack.png || true
           echo "zip_name=$zip_name" >> $GITHUB_OUTPUT
 
-      # Publish to GitHub and Modrinth at once
       - name: Publish to GitHub Release and Modrinth
         uses: Kira-NT/mc-publish@v3.2.0
         with:
           name: ${{ github.event.repository.name }}
           version: ${{ steps.norm_tag.outputs.tag }}
-          game_versions: ${{ github.event.inputs.versions }}
           changelog: ${{ github.event.inputs.changelog }}
           files: ${{ steps.zip.outputs.zip_name }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          curseforge: false
+          modrinth-game-versions: ${{ github.event.inputs.versions }}
+          modrinth-loaders: datapack
