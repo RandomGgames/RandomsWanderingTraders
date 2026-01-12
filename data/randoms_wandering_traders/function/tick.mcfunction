@@ -1,0 +1,1 @@
+execute as @e[type=minecraft:wandering_trader,tag=!RandomsWanderingTrader] run function randoms_wandering_traders:modify_this_wandering_trader
