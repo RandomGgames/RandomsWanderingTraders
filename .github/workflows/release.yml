@@ -9,8 +9,8 @@ on:
         type: string
       versions:
         description: |
-          Minecraft game versions (e.g., 1.21, 1.21-1.22, 1.21,1.22)
-          (separate with commas, dashes for ranges are supported)
+          One or more Minecraft versions, comma separated (e.g. 1.21.9,1.21.10 or 1.21.10)  
+          (Please do NOT use dash-ranges; input as explicit versions).
         required: true
         type: string
 
@@ -30,17 +30,42 @@ jobs:
     steps:
       - id: out
         run: |
-          # Normalize tag to always start with v
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] && tag="$inp" || tag="v$inp"
           base_version="${tag#v}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
 
+  prepare-versions:
+    name: Parse Minecraft Versions
+    runs-on: ubuntu-22.04
+    needs: normalize-tag
+    outputs:
+      mc_versions_json: ${{ steps.parse.outputs.mc_versions_json }}
+      mc_versions_yaml: ${{ steps.parse.outputs.mc_versions_yaml }}
+    steps:
+      - id: parse
+        run: |
+          VERSIONS="${{ github.event.inputs.versions }}"
+          # Error if blank
+          if [[ -z "$VERSIONS" ]]; then
+            echo "::error::You must specify at least one Minecraft version"
+            exit 1
+          fi
+          # Remove all spaces, split into lines
+          # Expand comma-separated (e.g., 1.21,1.22) into YAML
+          versions_yaml=$(echo "$VERSIONS" | tr -d ' ' | tr ',' '\n' | sed '/^$/d' | awk '{print "- "$0}')
+          versions_json=$(echo "$VERSIONS" | tr -d ' ' | tr ',' '\n' | sed '/^$/d' | jq -R . | jq -s .)
+          echo "$versions_yaml"
+          echo "mc_versions_yaml<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$versions_yaml" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "mc_versions_json=$versions_json" >> "$GITHUB_OUTPUT"
+
   build-zip:
     name: Prepare Release Archive
     runs-on: ubuntu-22.04
-    needs: normalize-tag
+    needs: [normalize-tag]
     outputs:
       zip_name: ${{ steps.zip.outputs.archive_name }}
     steps:
@@ -54,9 +79,8 @@ jobs:
           repo_name="${GITHUB_REPOSITORY#*/}"
           archive_name="${repo_name}-${base_version}.zip"
 
-          # Check for required datapack manifest
+          # Check for required manifest
           [ -f pack.mcmeta ] || { echo "::error::pack.mcmeta is missing"; exit 1; }
-          # Start archive with manifest, safely add content folders
           zip -r "$archive_name" pack.mcmeta
           [ -d data ] && zip -r "$archive_name" data || true
           [ -d assets ] && zip -r "$archive_name" assets || true
@@ -73,7 +97,7 @@ jobs:
   release:
     name: Github & Modrinth Release
     runs-on: ubuntu-22.04
-    needs: [normalize-tag, build-zip]
+    needs: [normalize-tag, build-zip, prepare-versions]
     env:
       MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
       MODRINTH_ID: ${{ vars.MODRINTH_ID }}
@@ -93,12 +117,11 @@ jobs:
           version: "${{ needs.normalize-tag.outputs.base_version }}"
           version-type: "release"
           changelog: auto
-          game-versions: ${{ github.event.inputs.versions }}
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_yaml }}
           files: ${{ needs.build-zip.outputs.zip_name }}
-          loaders: vanilla # ← REQUIRED: needed for data packs!
+          loaders: vanilla
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ env.MODRINTH_TOKEN }}
           modrinth-id: ${{ env.MODRINTH_ID }}
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
