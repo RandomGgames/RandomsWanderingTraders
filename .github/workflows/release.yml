@@ -9,11 +9,11 @@ on:
         type: string
       versions:
         description: |
-          One or more compatible Minecraft versions.
+          Minecraft versions.
           Examples:
             1.21.9
             1.21.9-1.21.11
-            1.21.7,1.21.9-1.21.11,1.22
+            1.21.7,1.21.9-1.21.11
         required: true
         type: string
 
@@ -24,61 +24,43 @@ jobs:
   normalize-tag:
     runs-on: ubuntu-22.04
     outputs:
-      tag: ${{ steps.out.outputs.tag }}
       base_version: ${{ steps.out.outputs.base_version }}
     steps:
       - id: out
         run: |
           inp="${{ github.event.inputs.tag }}"
-          [[ "$inp" =~ ^v ]] && tag="$inp" || tag="v$inp"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "base_version=${tag#v}" >> "$GITHUB_OUTPUT"
+          [[ "$inp" =~ ^v ]] || inp="v$inp"
+          echo "base_version=${inp#v}" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
     runs-on: ubuntu-22.04
     outputs:
-      mc_versions: ${{ steps.versions.outputs.mc_versions }}
+      mc_versions: ${{ steps.out.outputs.mc_versions }}
     steps:
-      - id: versions
+      - id: out
         run: |
           set -e
           INPUT="$(echo "${{ github.event.inputs.versions }}" | tr -d ' ')"
 
-          expand_range() {
-            local start="$1"
-            local end="$2"
-
-            [[ "${start%.*}" == "${end%.*}" ]] || {
-              echo "::error ::Invalid range: $start-$end"
-              exit 1
-            }
-
-            local base="${start%.*}."
-            local s="${start##*.}"
-            local e="${end##*.}"
-
-            for ((i=10#$s; i<=10#$e; i++)); do
-              echo "${base}${i}"
+          expand() {
+            local a="$1" b="$2"
+            [[ "${a%.*}" == "${b%.*}" ]] || exit 1
+            for ((i=${a##*.}; i<=${b##*.}; i++)); do
+              echo "${a%.*}.$i"
             done
           }
 
           OUT=()
           IFS=',' read -ra PARTS <<< "$INPUT"
-
           for p in "${PARTS[@]}"; do
             if [[ "$p" == *-* ]]; then
               while read -r v; do OUT+=("$v"); done < <(
-                expand_range "${p%%-*}" "${p##*-}"
+                expand "${p%%-*}" "${p##*-}"
               )
             else
               OUT+=("$p")
             fi
           done
-
-          if [[ ${#OUT[@]} -eq 0 ]]; then
-            echo "::error ::No valid Minecraft versions provided"
-            exit 1
-          fi
 
           {
             echo "mc_versions<<EOF"
@@ -90,34 +72,41 @@ jobs:
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
-      zip_name: ${{ steps.zip.outputs.archive_name }}
+      zip_name: ${{ steps.zip.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
       - id: zip
         run: |
-          name="${GITHUB_REPOSITORY#*/}-${{ needs.normalize-tag.outputs.base_version }}.zip"
-          [ -f pack.mcmeta ] || exit 1
-          zip -r "$name" pack.mcmeta
-          [ -d data ] && zip -r "$name" data
-          [ -d assets ] && zip -r "$name" assets
-          [ -f pack.png ] && zip -u "$name" pack.png
-          echo "archive_name=$name" >> "$GITHUB_OUTPUT"
+          set -e
+          ZIP="${GITHUB_REPOSITORY#*/}-${{ needs.normalize-tag.outputs.base_version }}.zip"
+
+          # Hard fail if pack.mcmeta is not at repo root
+          [ -f pack.mcmeta ] || {
+            echo "::error ::pack.mcmeta must be at repository root"
+            exit 1
+          }
+
+          zip -r "$ZIP" pack.mcmeta
+          [ -d data ] && zip -r "$ZIP" data
+          [ -d assets ] && zip -r "$ZIP" assets
+          [ -f pack.png ] && zip -u "$ZIP" pack.png
+
+          unzip -l "$ZIP" | sed 's/^/  /'
+          echo "name=$ZIP" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: datapack-archive
-          path: ${{ steps.zip.outputs.archive_name }}
+          name: datapack
+          path: ${{ steps.zip.outputs.name }}
 
   release:
     runs-on: ubuntu-22.04
-    needs: [normalize-tag, build-zip, prepare-versions]
+    needs: [normalize-tag, prepare-versions, build-zip]
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
-          name: datapack-archive
+          name: datapack
 
       - uses: Kira-NT/mc-publish@v3
         with:
