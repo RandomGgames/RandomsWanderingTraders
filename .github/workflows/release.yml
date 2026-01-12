@@ -25,12 +25,14 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       base_version: ${{ steps.out.outputs.base_version }}
+      full_tag: ${{ steps.out.outputs.full_tag }}
     steps:
       - id: out
         run: |
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] || inp="v$inp"
           echo "base_version=${inp#v}" >> "$GITHUB_OUTPUT"
+          echo "full_tag=$inp" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
     runs-on: ubuntu-22.04
@@ -79,15 +81,12 @@ jobs:
       - id: zip
         run: |
           set -e
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          ZIP="${REPO_NAME}-${{ needs.normalize-tag.outputs.base_version }}.zip"
 
-          ZIP="RandomsWanderingTraders-${{ needs.normalize-tag.outputs.base_version }}.zip"
-
-          # Required file
-          [ -f pack.mcmeta ] || { echo "::error ::pack.mcmeta not found"; exit 1; }
+          [ -f pack.mcmeta ] || { echo "::error ::pack.mcmeta not found at repo root"; exit 1; }
 
           rm -f "$ZIP"
-
-          # Explicit datapack root contents only
           zip -r "$ZIP" pack.mcmeta
           [ -d data ] && zip -r "$ZIP" data
           [ -d assets ] && zip -r "$ZIP" assets
@@ -112,15 +111,44 @@ jobs:
         with:
           name: datapack
 
+      - name: Determine previous tag
+        id: prev-tag
+        run: |
+          git fetch --tags
+          PREV=$(git tag --sort=-v:refname | sed -n '2p')
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Build release metadata
+        id: release-meta
+        run: |
+          REPO="${GITHUB_REPOSITORY#*/}"
+          CUR="${{ needs.normalize-tag.outputs.full_tag }}"
+          PREV="${{ steps.prev-tag.outputs.prev }}"
+          VERSIONS="${{ github.event.inputs.versions }}"
+
+          echo "github_title=${REPO} ${CUR} for ${VERSIONS}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$PREV" ]; then
+            echo "github_changelog=**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${CUR}" >> "$GITHUB_OUTPUT"
+          else
+            echo "github_changelog=Initial release" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: Kira-NT/mc-publish@v3
         with:
           name: ${{ needs.normalize-tag.outputs.base_version }}
           version: ${{ needs.normalize-tag.outputs.base_version }}
           version-type: release
-          changelog: auto
+
           game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
-          files: ${{ needs.build-zip.outputs.zip_name }}
           loaders: datapack
+          files: ${{ needs.build-zip.outputs.zip_name }}
+
+          github-name: ${{ steps.release-meta.outputs.github_title }}
+          github-changelog: ${{ steps.release-meta.outputs.github_changelog }}
+
+          modrinth-changelog: auto
+
           github-token: ${{ secrets.GITHUB_TOKEN }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           modrinth-id: ${{ vars.MODRINTH_ID }}
