@@ -11,7 +11,7 @@ on:
         description: |
           One or more compatible Minecraft versions.
           Separate with commas for explicit versions (e.g. 1.21.9,1.21.10) or use a dash for ranges (e.g. 1.21.9-1.21.11).
-          Mixed forms are supported: e.g., 1.21.5,1.21.9-1.21.11,1.21.14
+          Mixed forms supported: 1.21.7,1.21.9-1.21.11,1.22
         required: true
         type: string
 
@@ -38,11 +38,11 @@ jobs:
           echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
 
   prepare-versions:
-    name: Expand and Validate Minecraft Versions
+    name: Expand and Format Minecraft Versions (YAML)
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
-      mc_versions_list: ${{ steps.versions.outputs.mc_versions_list }}
+      mc_versions_yaml: ${{ steps.versions.outputs.mc_versions_yaml }}
     steps:
       - id: versions
         run: |
@@ -50,14 +50,13 @@ jobs:
           VERSIONS="${{ github.event.inputs.versions }}"
           VERSIONS_STRIPPED="$(echo "$VERSIONS" | tr -d ' ')"
 
-          # Function to expand simple patch version ranges only
           expand_range() {
             local start="$1"
             local end="$2"
             local prefix
             local start_patch
             local end_patch
-            prefix="${start%.*}."                # everything up to last dot + dot
+            prefix="${start%.*}."
             start_patch="${start##*.}"
             end_patch="${end##*.}"
 
@@ -75,34 +74,36 @@ jobs:
             fi
 
             for ((p=10#$start_patch; p<=10#$end_patch; p++)); do
-              echo -n "${prefix}${p},"
+              echo "${prefix}${p}"
             done
           }
 
-          FINAL_VERSIONS=""
-
+          FINAL_LINES=()
           IFS=',' read -ra PARTS <<< "$VERSIONS_STRIPPED"
           for PART in "${PARTS[@]}"; do
             if [[ -z "$PART" ]]; then continue; fi
             if [[ "$PART" == *-* ]]; then
               START="${PART%%-*}"
               END="${PART##*-}"
-              RANGE_EXPANDED="$(expand_range "$START" "$END")"
-              FINAL_VERSIONS+="$RANGE_EXPANDED"
+              while IFS= read -r expanded; do
+                FINAL_LINES+=("$expanded")
+              done < <(expand_range "$START" "$END")
             else
-              FINAL_VERSIONS+="$PART,"
+              FINAL_LINES+=("$PART")
             fi
           done
 
-          # Remove trailing comma
-          FINAL_VERSIONS="${FINAL_VERSIONS%,}"
-
-          if [[ -z "$FINAL_VERSIONS" ]]; then
+          if [[ ${#FINAL_LINES[@]} -eq 0 ]]; then
             echo "::error ::You must specify at least one valid Minecraft version."
             exit 1
           fi
 
-          echo "mc_versions_list=$FINAL_VERSIONS" >> $GITHUB_OUTPUT
+          # YAML multiline for GitHub Actions ($GITHUB_OUTPUT)
+          echo "mc_versions_yaml<<EOF" >> $GITHUB_OUTPUT
+          for v in "${FINAL_LINES[@]}"; do
+            echo "- $v" >> $GITHUB_OUTPUT
+          done
+          echo "EOF" >> $GITHUB_OUTPUT
 
   build-zip:
     name: Prepare Release Archive
@@ -158,7 +159,7 @@ jobs:
           version: "${{ needs.normalize-tag.outputs.base_version }}"
           version-type: "release"
           changelog: auto
-          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_list }}
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions_yaml }}
           files: ${{ needs.build-zip.outputs.zip_name }}
           loaders: vanilla
           github-token: ${{ secrets.GITHUB_TOKEN }}
