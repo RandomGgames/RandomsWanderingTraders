@@ -72,33 +72,41 @@ jobs:
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
-      zip_name: ${{ steps.zip.outputs.name }}
+      zip_name: ${{ steps.zip.outputs.archive_name }}
     steps:
       - uses: actions/checkout@v4
 
       - id: zip
         run: |
           set -e
-          ZIP="${GITHUB_REPOSITORY#*/}-${{ needs.normalize-tag.outputs.base_version }}.zip"
 
-          # Hard fail if pack.mcmeta is not at repo root
-          [ -f pack.mcmeta ] || {
+          ZIP="RandomsWanderingTraders-${{ needs.normalize-tag.outputs.base_version }}.zip"
+
+          # Absolute validation
+          if [ ! -f pack.mcmeta ]; then
             echo "::error ::pack.mcmeta must be at repository root"
+            echo "Repository contents:"
+            ls -la
             exit 1
-          }
+          fi
 
-          zip -r "$ZIP" pack.mcmeta
-          [ -d data ] && zip -r "$ZIP" data
-          [ -d assets ] && zip -r "$ZIP" assets
-          [ -f pack.png ] && zip -u "$ZIP" pack.png
+          # Build zip from pack root
+          rm -f "$ZIP"
+          zip -r "$ZIP" . \
+            -x ".git/*" \
+            -x ".github/*" \
+            -x "*.zip"
 
-          unzip -l "$ZIP" | sed 's/^/  /'
-          echo "name=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "::group::ZIP CONTENTS"
+          unzip -l "$ZIP"
+          echo "::endgroup::"
+
+          echo "archive_name=$ZIP" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: datapack
-          path: ${{ steps.zip.outputs.name }}
+          path: ${{ steps.zip.outputs.archive_name }}
 
   release:
     runs-on: ubuntu-22.04
