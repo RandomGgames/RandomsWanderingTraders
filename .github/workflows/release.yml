@@ -107,6 +107,9 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [normalize-tag, prepare-versions, build-zip]
     steps:
+      # Checkout again to have .git for tag comparison
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: datapack
