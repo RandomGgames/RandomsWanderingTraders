@@ -1,4 +1,4 @@
-name: Create and publish datapack release
+name: Publish Datapack Release
 
 on:
   workflow_dispatch:
@@ -12,105 +12,55 @@ on:
         required: true
         type: string
       changelog:
-        description: "Changelog text"
+        description: "Changelog (optional)"
         required: false
         type: string
 
 permissions:
   contents: write
 
-env:
-  NORMALIZED_TAG: ${{ github.event.inputs.tag }}
-  # >>>>> REPLACE WITH YOUR MODRINTH PROJECT ID BELOW <<<<<
-  MODRINTH_ID: "YourModrinthProjectID" # example: Abc12345
-
 jobs:
-  prepare-and-zip:
-    name: Prepare and zip release
+  release:
     runs-on: ubuntu-22.04
-    outputs:
-      tag: ${{ steps.set-tag.outputs.tag }}
-      zip_name: ${{ steps.zip.outputs.zip_name }}
     steps:
-      - id: set-tag
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Normalize tag to start with v
+      - name: Normalize tag
+        id: norm_tag
         run: |
           TAG="${{ github.event.inputs.tag }}"
           if [[ "$TAG" != v* ]]; then
             TAG="v$TAG"
           fi
-          echo "Normalized tag is $TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v4
-
-      - name: Zip datapack files
+      # Prepare the zip file with repo and version info
+      - name: Zip files for release
         id: zip
         run: |
-          tag="${{ steps.set-tag.outputs.tag }}"
+          tag="${{ steps.norm_tag.outputs.tag }}"
           repo_name="${GITHUB_REPOSITORY#*/}"
           zip_name="${repo_name}-${tag#v}.zip"
-          # Required file
+
           [ -f pack.mcmeta ] || { echo "Error: pack.mcmeta not found"; exit 1; }
-          # Optional files/folders
           zip -r "$zip_name" pack.mcmeta || true
           [ -d data ] && zip -r "$zip_name" data || true
           [ -d assets ] && zip -r "$zip_name" assets || true
           [ -f pack.png ] && zip -u "$zip_name" pack.png || true
-          echo "zip_name=$zip_name" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$zip_name" >> $GITHUB_OUTPUT
 
-  github-release:
-    needs: prepare-and-zip
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download zipped artifact
-        run: |
-          cp "${{ needs.prepare-and-zip.outputs.zip_name }}" .
-
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${{ needs.prepare-and-zip.outputs.tag }}"
-          repo_name="${GITHUB_REPOSITORY#*/}"
-          game_versions="${{ github.event.inputs.versions }}"
-          changelog="${{ github.event.inputs.changelog }}"
-          zipfile="${{ needs.prepare-and-zip.outputs.zip_name }}"
-
-          gh release create "$tag" \
-              --repo="$GITHUB_REPOSITORY" \
-              --title="${repo_name} v${tag#v} for ${game_versions}" \
-              ${changelog:+--notes "$changelog"} \
-              "$zipfile"
-
-  modrinth:
-    name: Upload to Modrinth
-    needs: prepare-and-zip
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download zipped artifact
-        run: |
-          cp "${{ needs.prepare-and-zip.outputs.zip_name }}" .
-
-      - name: Publish datapack to Modrinth
-        uses: tristankechlo/publish-mc-mod@v1.0.0
+      # Publish to GitHub and Modrinth at once
+      - name: Publish to GitHub Release and Modrinth
+        uses: Kira-NT/mc-publish@v4
         with:
-          # Required: your Modrinth project ID (find it in the project sidebar on modrinth.com)
-          modrinth-id: ${{ env.MODRINTH_ID }}
-          changelog: ${{ github.event.inputs.changelog || '' }}
-          mod-version: ${{ needs.prepare-and-zip.outputs.tag }}
-          mc-version: ${{ github.event.inputs.versions }}
-          # Only push to Modrinth, not CurseForge/etc:
-          curseforge-id: ""
-          curseforge-token: ""
-          forge: false
-          fabric: false
-          neoforge: false
-          # Datapack .zip artifact
-          file: ${{ needs.prepare-and-zip.outputs.zip_name }}
+          name: ${{ github.event.repository.name }}
+          version: ${{ steps.norm_tag.outputs.tag }}
+          game_versions: ${{ github.event.inputs.versions }}
+          changelog: ${{ github.event.inputs.changelog }}
+          files: ${{ steps.zip.outputs.zip_name }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          modrinth-id: ${{ vars.MODRINTH_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          # If you want to mark version as "featured", set to true
-          featured: false
+          curseforge: false
