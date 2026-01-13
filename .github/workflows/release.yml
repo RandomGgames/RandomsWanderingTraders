@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Needed to access tags
+          fetch-depth: 0
 
       - id: out
         run: |
@@ -124,7 +124,6 @@ jobs:
           PREV=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n1)
           [ -z "$PREV" ] && PREV="$TAG"
 
-          # Generate changelog between previous and current tag
           CHANGELOG="**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
           echo "changelog=$CHANGELOG" >> "$GITHUB_OUTPUT"
 
@@ -137,22 +136,29 @@ jobs:
           name: datapack
 
       - name: Publish to Modrinth and GitHub
-        uses: Kira-NT/mc-publish@v3
-        with:
-          name: ${{ needs.normalize-tag.outputs.base_version }}
-          version: ${{ needs.normalize-tag.outputs.base_version }}
-          version-type: release
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          VERSION="${{ needs.normalize-tag.outputs.base_version }}"
+          TAG="${{ needs.normalize-tag.outputs.full_tag }}"
+          VERSIONS="${{ github.event.inputs.versions }}"
+          ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
+          CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
 
-          files: ${{ needs.build-zip.outputs.zip_name }}
-          loaders: datapack
-          game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
+          gh release create "$TAG" \
+            --repo="$GITHUB_REPOSITORY" \
+            --title="${REPO_NAME} ${TAG} for ${VERSIONS}" \
+            --notes "$CHANGELOG" \
+            --latest \
+            "$ZIP_FILE"
 
-          # GitHub release customization
-          github-name: "${{ github.repository#*/ }} v${{ needs.normalize-tag.outputs.base_version }} for ${{ github.event.inputs.versions }}"
-          github-changelog: ${{ needs.generate-changelog.outputs.CHANGELOG }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-          # Modrinth release customization
-          modrinth-changelog: ${{ needs.generate-changelog.outputs.CHANGELOG }}
-          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          modrinth-id: ${{ vars.MODRINTH_ID }}
+          # Publish to Modrinth
+          npx kira-mc-publish@latest \
+            --name "$VERSION" \
+            --version "$VERSION" \
+            --version-type release \
+            --files "$ZIP_FILE" \
+            --loaders datapack \
+            --game-versions "${{ needs.prepare-versions.outputs.mc_versions }}" \
+            --modrinth-changelog "$CHANGELOG" \
+            --modrinth-id "${{ vars.MODRINTH_ID }}" \
+            --modrinth-token "${{ secrets.MODRINTH_TOKEN }}"
