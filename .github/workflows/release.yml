@@ -111,18 +111,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Ensure all tags are fetched for changelog
 
       - id: out
         run: |
+          set -e
           TAG="${{ needs.normalize-tag.outputs.full_tag }}"
+
+          # Get previous tag for changelog
+          PREV=$(git tag --sort=-v:refname | grep -v "$TAG" | head -n1 || true)
+          if [ -z "$PREV" ]; then
+            PREV="$TAG"
+          fi
+
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
-
-          # Get previous tag (fallback to initial commit)
-          git fetch --tags
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p' || echo $(git rev-list --max-parents=0 HEAD))
-          CHANGELOG="**Full Changelog**: https://github.com/${REPO_NAME}/compare/${PREV_TAG}...${TAG}"
-
+          CHANGELOG="**Full Changelog**: https://github.com/${REPO_NAME}/compare/${PREV}...${TAG}"
           echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
 
   release:
@@ -133,22 +136,17 @@ jobs:
         with:
           name: datapack
 
-      - name: Publish GitHub & Modrinth release
+      - name: Create GitHub release with changelog
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          VERSION="${{ needs.normalize-tag.outputs.base_version }}"
           TAG="${{ needs.normalize-tag.outputs.full_tag }}"
           VERSIONS="${{ github.event.inputs.versions }}"
           ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
           CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
 
-          # Convert multi-line MC versions to comma-separated for Modrinth
-          GAME_VERSIONS=$(echo "${{ needs.prepare-versions.outputs.mc_versions }}" | tr '\n' ',' | sed 's/,$//')
-
-          # Single GitHub release
+          # Single GitHub release with latest flag
           gh release create "$TAG" \
             --repo="$GITHUB_REPOSITORY" \
             --title="${REPO_NAME} ${TAG} for ${VERSIONS}" \
@@ -156,14 +154,15 @@ jobs:
             --latest \
             "$ZIP_FILE"
 
-          # Publish to Modrinth using the same changelog
-          npx kira-mc-publish@latest \
-            --name "$VERSION" \
-            --version "$VERSION" \
-            --version-type release \
-            --files "$ZIP_FILE" \
-            --loaders datapack \
-            --game-versions "$GAME_VERSIONS" \
-            --modrinth-changelog "$CHANGELOG" \
-            --modrinth-id "${{ vars.MODRINTH_ID }}" \
-            --modrinth-token "$MODRINTH_TOKEN"
+      - uses: Kira-NT/mc-publish@v3
+        with:
+          name: ${{ needs.normalize-tag.outputs.base_version }}
+          version: ${{ needs.normalize-tag.outputs.base_version }}
+          version-type: release
+          game-versions: ${{ needs.prepare-versions.outputs.mc_versions }}
+          loaders: datapack
+          files: ${{ needs.build-zip.outputs.zip_name }}
+          modrinth-changelog: ${{ needs.generate-changelog.outputs.CHANGELOG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-id: ${{ vars.MODRINTH_ID }}
