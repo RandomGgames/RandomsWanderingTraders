@@ -114,11 +114,13 @@ jobs:
           fetch-depth: 0 # Ensure all tags are fetched
 
       - id: out
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # <--- Required for gh CLI
         run: |
           set -e
           VERSION="${{ needs.normalize-tag.outputs.base_version }}"
 
-          # Use GitHub CLI to generate the same detailed changelog as GitHub would
+          # Use GitHub CLI to generate the detailed changelog as GitHub would
           gh release create "${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "TEMP" \
@@ -142,7 +144,7 @@ jobs:
 
       - name: Create GitHub release with detailed changelog
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           VERSION="${{ needs.normalize-tag.outputs.base_version }}"
