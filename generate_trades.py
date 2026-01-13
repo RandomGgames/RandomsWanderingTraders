@@ -11,15 +11,6 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-"""
-Python Script Template
-
-Template includes:
-- Configurable logging via config file
-- Script run time at the end of execution
-- Error handling and cleanup
-"""
-
 __version__ = "1.0.0"  # Major.Minor.Patch
 
 
