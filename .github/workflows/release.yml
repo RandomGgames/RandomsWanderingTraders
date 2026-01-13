@@ -132,7 +132,11 @@ jobs:
           # Delete temporary draft release (we only want the changelog for now)
           gh release delete "${VERSION}" --repo "$GITHUB_REPOSITORY" --yes
 
-          echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
+          # Encode changelog to base64
+          ENCODED_CHANGELOG=$(printf "%s" "$CHANGELOG" | base64)
+
+          # Write safely to GitHub output
+          echo "CHANGELOG_BASE64=$ENCODED_CHANGELOG" >> "$GITHUB_OUTPUT"
 
   release:
     runs-on: ubuntu-22.04
@@ -150,7 +154,7 @@ jobs:
           VERSION="${{ needs.normalize-tag.outputs.base_version }}"
           VERSIONS="${{ github.event.inputs.versions }}"
           ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
-          CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
+          CHANGELOG=$(echo "${{ needs.generate-changelog.outputs.CHANGELOG_BASE64 }}" | base64 --decode)
 
           # Single GitHub release with detailed changelog
           gh release create "$VERSION" \
