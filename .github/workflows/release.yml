@@ -32,7 +32,7 @@ jobs:
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] || inp="v$inp"
           echo "base_version=${inp#v}" >> "$GITHUB_OUTPUT"
-          echo "full_tag=${inp#v}" >> "$GITHUB_OUTPUT"  # Use base_version here for GitHub release tag
+          echo "full_tag=${inp#v}" >> "$GITHUB_OUTPUT"  # GitHub release tag without 'v'
 
   prepare-versions:
     runs-on: ubuntu-22.04
@@ -116,23 +116,19 @@ jobs:
       - id: out
         run: |
           set -e
-          TAG="${{ needs.normalize-tag.outputs.full_tag }}"
+          VERSION="${{ needs.normalize-tag.outputs.base_version }}"
 
-          # Get previous tag for changelog
-          PREV=$(git tag --sort=-v:refname | grep -v "$TAG" | head -n1 || true)
-          if [ -z "$PREV" ]; then
-            PREV="$TAG"
-          fi
+          # Use GitHub CLI to generate the same detailed changelog as GitHub would
+          gh release create "${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "TEMP" \
+            --generate-notes \
+            --draft
 
-          # Use actual commit-based changelog
-          CHANGELOG=$(gh log "$PREV..HEAD" --pretty=format:'* %s by @%an in %h' || true)
+          CHANGELOG=$(gh release view "${VERSION}" --repo "$GITHUB_REPOSITORY" --json body -q '.body')
 
-          # If no commits, fallback to a basic changelog
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="**Full Changelog**: https://github.com/${GITHUB_REPOSITORY#*/}/compare/${PREV}...${TAG}"
-          else
-            CHANGELOG="## What's Changed"$'\n'"$CHANGELOG"
-          fi
+          # Delete temporary draft release (we only want the changelog for now)
+          gh release delete "${VERSION}" --repo "$GITHUB_REPOSITORY" --yes
 
           echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
 
@@ -144,7 +140,7 @@ jobs:
         with:
           name: datapack
 
-      - name: Create GitHub release with changelog
+      - name: Create GitHub release with detailed changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -154,7 +150,7 @@ jobs:
           ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
           CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
 
-          # Create single GitHub release using base_version as tag
+          # Single GitHub release with detailed changelog
           gh release create "$VERSION" \
             --repo="$GITHUB_REPOSITORY" \
             --title="${REPO_NAME} ${VERSION} for ${VERSIONS}" \
