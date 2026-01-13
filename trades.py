@@ -10,7 +10,7 @@ class Trade(NamedTuple):
     price_multiplier: float
     max_uses: int
     weight: int
-
+# 
     def add_nbt(self) -> str:
         return json.dumps(
             {
