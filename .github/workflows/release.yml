@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: normalize-tag
     outputs:
-      CHANGELOG: ${{ steps.out.outputs.changelog }}
+      CHANGELOG: ${{ steps.out.outputs.CHANGELOG }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,16 +115,15 @@ jobs:
 
       - id: out
         run: |
-          set -e
           TAG="${{ needs.normalize-tag.outputs.full_tag }}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
 
-          # Find previous tag
-          PREV=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n1)
-          [ -z "$PREV" ] && PREV="$TAG"
+          # Get previous tag (fallback to initial commit)
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p' || echo $(git rev-list --max-parents=0 HEAD))
+          CHANGELOG="**Full Changelog**: https://github.com/${REPO_NAME}/compare/${PREV_TAG}...${TAG}"
 
-          # Create changelog like in old script
-          CHANGELOG="**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
-          echo "changelog=$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
 
   release:
     runs-on: ubuntu-22.04
@@ -135,6 +134,9 @@ jobs:
           name: datapack
 
       - name: Publish GitHub & Modrinth release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           VERSION="${{ needs.normalize-tag.outputs.base_version }}"
@@ -142,6 +144,9 @@ jobs:
           VERSIONS="${{ github.event.inputs.versions }}"
           ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
           CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
+
+          # Convert multi-line MC versions to comma-separated for Modrinth
+          GAME_VERSIONS=$(echo "${{ needs.prepare-versions.outputs.mc_versions }}" | tr '\n' ',' | sed 's/,$//')
 
           # Single GitHub release
           gh release create "$TAG" \
@@ -158,7 +163,7 @@ jobs:
             --version-type release \
             --files "$ZIP_FILE" \
             --loaders datapack \
-            --game-versions "${{ needs.prepare-versions.outputs.mc_versions }}" \
+            --game-versions "$GAME_VERSIONS" \
             --modrinth-changelog "$CHANGELOG" \
             --modrinth-id "${{ vars.MODRINTH_ID }}" \
-            --modrinth-token "${{ secrets.MODRINTH_TOKEN }}"
+            --modrinth-token "$MODRINTH_TOKEN"
