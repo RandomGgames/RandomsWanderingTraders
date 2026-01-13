@@ -32,7 +32,7 @@ jobs:
           inp="${{ github.event.inputs.tag }}"
           [[ "$inp" =~ ^v ]] || inp="v$inp"
           echo "base_version=${inp#v}" >> "$GITHUB_OUTPUT"
-          echo "full_tag=$inp" >> "$GITHUB_OUTPUT"
+          echo "full_tag=${inp#v}" >> "$GITHUB_OUTPUT"  # Use base_version here for GitHub release tag
 
   prepare-versions:
     runs-on: ubuntu-22.04
@@ -111,7 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Ensure all tags are fetched for changelog
+          fetch-depth: 0 # Ensure all tags are fetched
 
       - id: out
         run: |
@@ -124,8 +124,16 @@ jobs:
             PREV="$TAG"
           fi
 
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          CHANGELOG="**Full Changelog**: https://github.com/${REPO_NAME}/compare/${PREV}...${TAG}"
+          # Use actual commit-based changelog
+          CHANGELOG=$(gh log "$PREV..HEAD" --pretty=format:'* %s by @%an in %h' || true)
+
+          # If no commits, fallback to a basic changelog
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="**Full Changelog**: https://github.com/${GITHUB_REPOSITORY#*/}/compare/${PREV}...${TAG}"
+          else
+            CHANGELOG="## What's Changed"$'\n'"$CHANGELOG"
+          fi
+
           echo "CHANGELOG=$CHANGELOG" >> "$GITHUB_OUTPUT"
 
   release:
@@ -141,15 +149,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          TAG="${{ needs.normalize-tag.outputs.full_tag }}"
+          VERSION="${{ needs.normalize-tag.outputs.base_version }}"
           VERSIONS="${{ github.event.inputs.versions }}"
           ZIP_FILE="${{ needs.build-zip.outputs.zip_name }}"
           CHANGELOG="${{ needs.generate-changelog.outputs.CHANGELOG }}"
 
-          # Single GitHub release with latest flag
-          gh release create "$TAG" \
+          # Create single GitHub release using base_version as tag
+          gh release create "$VERSION" \
             --repo="$GITHUB_REPOSITORY" \
-            --title="${REPO_NAME} ${TAG} for ${VERSIONS}" \
+            --title="${REPO_NAME} ${VERSION} for ${VERSIONS}" \
             --notes "$CHANGELOG" \
             --latest \
             "$ZIP_FILE"
